@@ -484,13 +484,16 @@ input:focus, select:focus { outline: none; border-color: var(--ag-gold); backgro
   <div class="modal-overlay" id="modal-contrat" style="display:none">
     <div class="modal">
       <h3 id="modal-contrat-title">Type de contrat</h3>
-      <p style="font-size:13px;color:#666;margin-bottom:12px;">Sélectionnez le contrat applicable à ce salarié.</p>
+      <p style="font-size:13px;color:#666;margin-bottom:8px;">Sélectionnez le contrat applicable à ce salarié.</p>
       <select id="contrat-select" style="margin-bottom:12px;">
         <option value="c1">Contrat 1 — 35h sur 5 jours (7h/jour)</option>
         <option value="c2">Contrat 2 — 35h lundi-vendredi midi</option>
         <option value="c3">Contrat 3 — Alternance 4j/5j (Alexandre)</option>
         <option value="c4">Contrat 4 — Apprentis (école/entreprise)</option>
       </select>
+      <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;">Date d'effet du nouveau contrat</label>
+      <input type="date" id="contrat-date" style="margin-bottom:4px;" />
+      <div style="font-size:11px;color:#aaa;margin-bottom:12px;">Le nouveau contrat s'appliquera à partir de cette date. Les semaines précédentes gardent l'ancien contrat.</div>
       <div class="error" id="contrat-err"></div>
       <div class="modal-actions">
         <button class="btn-secondary" onclick="closeModal()">Annuler</button>
@@ -1230,7 +1233,9 @@ function buildHistoryHTML(entries, el, cpDaysByWeek = {}) {
         const wkMon = weekCumul[wk].mon;
         const wkFri = new Date(wkMon); wkFri.setDate(wkMon.getDate() + 4);
         const wkTotal = weekCumul[wk].total;
-        const wkObjectif = getWeeklyObjectif(UP?.contrat || 'c1', wk, cpDaysByWeek);
+        const wkContratHistory = UP?.contratHistory || [];
+        const wkContrat = getContratForWeek(wk, UP?.contrat || 'c1', wkContratHistory);
+        const wkObjectif = getWeeklyObjectif(wkContrat, wk, cpDaysByWeek);
         const wkColor = wkTotal >= wkObjectif ? '#1D9E75' : '#E24B4A';
         const wkPct = Math.min(Math.round((wkTotal / (wkObjectif || 35)) * 100), 100);
         const isCurrentWeek = wk >= (monDate.getFullYear()+'-'+String(monDate.getMonth()+1).padStart(2,'0')+'-'+String(monDate.getDate()).padStart(2,'0'));
@@ -1549,6 +1554,19 @@ function getFeriesDaysInWeek(weekKey) {
 }
 
 // Calcule l'objectif hebdomadaire selon le contrat et les jours de congé
+// Retourne le contrat applicable pour une semaine donnée selon l'historique
+function getContratForWeek(weekKey, currentContrat, contratHistory) {
+  if (!contratHistory || !contratHistory.length) return currentContrat;
+  // Chercher si une entrée de l'historique couvre cette semaine
+  for (const h of contratHistory) {
+    const from = h.from || '2025-04-13';
+    const to = h.to || '9999-12-31';
+    if (weekKey >= from && weekKey < to) return h.contrat;
+  }
+  // Si la semaine est après toutes les entrées → contrat actuel
+  return currentContrat;
+}
+
 function getWeeklyObjectif(contrat, weekKey, cpDaysByWeek) {
   const cpDays = cpDaysByWeek[weekKey] || 0;
 
@@ -1671,9 +1689,11 @@ async function renderWeeklyRecap() {
     // Calculer le solde total — objectif ajusté par contrat et CP
     let soldeTotal = soldeInitial - recupDeduction;
     const userContrat = UP?.contrat || 'c1';
+    const contratHistory = userSnap.exists ? (userSnap.data().contratHistory || []) : [];
     Object.entries(weeks).forEach(([key, w]) => {
       if (key !== thisWeekKey) {
-        const objectif = getWeeklyObjectif(userContrat, key, cpDaysByWeek);
+        const contratForWeek = getContratForWeek(key, userContrat, contratHistory);
+        const objectif = getWeeklyObjectif(contratForWeek, key, cpDaysByWeek);
         soldeTotal += w.total - objectif;
       }
     });
@@ -1741,7 +1761,8 @@ async function renderWeeklyRecap() {
       const fri = new Date(w.mon); fri.setDate(w.mon.getDate() + 4);
       const friStr = fri.toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit'});
       const isThisWeek = key === thisWeekKey;
-      const objectifSem = getWeeklyObjectif(UP?.contrat || 'c1', key, cpDaysByWeek);
+      const contratForSem = getContratForWeek(key, UP?.contrat || 'c1', contratHistory);
+      const objectifSem = getWeeklyObjectif(contratForSem, key, cpDaysByWeek);
       const cpDays = cpDaysByWeek[key] || 0;
       const pct = Math.min(Math.round((w.total / (objectifSem || 35)) * 100), 100);
       const color = w.total >= objectifSem ? (w.total > objectifSem ? '#7F77DD' : '#1D9E75') : '#E24B4A';
@@ -1874,10 +1895,12 @@ async function computeAllSoldes() {
     const usersSnap = await db.collection('users').get();
     const soldesInitiaux = {};
     const userContracts = {};
+    const userContratHistories = {};
     usersSnap.docs.forEach(d => {
       soldesInitiaux[d.id] = d.data().soldeInitial || 0;
       userContracts[d.id] = d.data().contrat || 'c1';
       userContracts[d.id + '_start'] = d.data().startDate || DEFAULT_START;
+      userContratHistories[d.id] = d.data().contratHistory || [];
     });
 
     // Récupérer tous les pointages
@@ -1942,9 +1965,11 @@ async function computeAllSoldes() {
     Object.entries(byUser).forEach(([uid, weekData]) => {
       const base = soldesInitiaux[uid] || 0;
       const contrat = userContracts[uid] || 'c1';
+      const history = userContratHistories[uid] || [];
       const cpMap = cpDaysByUserWeek[uid] || {};
       const solde = Object.entries(weekData).reduce((a, [wk, h]) => {
-        const obj = getWeeklyObjectif(contrat, wk, cpMap);
+        const contratForWk = getContratForWeek(wk, contrat, history);
+        const obj = getWeeklyObjectif(contratForWk, wk, cpMap);
         return a + (h - obj);
       }, 0);
       employeesSolde[uid] = base + solde;
@@ -2057,13 +2082,37 @@ window.openContratModal = (uid, name, currentContrat) => {
   document.getElementById('modal-contrat-title').textContent = 'Contrat de ' + name;
   document.getElementById('contrat-select').value = currentContrat || 'c1';
   document.getElementById('contrat-err').textContent = '';
+  // Date d'effet par défaut = lundi de la semaine en cours
+  const now = new Date();
+  const day = now.getDay() || 7;
+  const lundi = new Date(now);
+  lundi.setDate(now.getDate() - day + 1);
+  lundi.setHours(12,0,0,0);
+  const lundiISO = lundi.getFullYear()+'-'+String(lundi.getMonth()+1).padStart(2,'0')+'-'+String(lundi.getDate()).padStart(2,'0');
+  document.getElementById('contrat-date').value = lundiISO;
   document.getElementById('modal-contrat').style.display = 'flex';
 };
 
 document.getElementById('contrat-save').addEventListener('click', async () => {
   const contrat = document.getElementById('contrat-select').value;
+  const dateEffet = document.getElementById('contrat-date').value;
+  if (!dateEffet) {
+    document.getElementById('contrat-err').textContent = 'Veuillez saisir une date d\'effet.';
+    return;
+  }
   try {
-    await db.collection('users').doc(currentContratUid).update({ contrat });
+    // Charger l'historique existant
+    const userSnap = await db.collection('users').doc(currentContratUid).get();
+    const existingHistory = userSnap.data()?.contratHistory || [];
+    // Ajouter la nouvelle entrée (contrat actuel prend fin, nouveau commence)
+    const currentContrat = userSnap.data()?.contrat || 'c1';
+    // Supprimer les entrées futures éventuelles (on écrase)
+    const filteredHistory = existingHistory.filter(h => h.from < dateEffet);
+    const newHistory = [...filteredHistory, { contrat: currentContrat, from: userSnap.data()?.startDate || '2025-04-13', to: dateEffet }];
+    await db.collection('users').doc(currentContratUid).update({
+      contrat,
+      contratHistory: newHistory
+    });
     closeModal();
   } catch(e) {
     document.getElementById('contrat-err').textContent = 'Erreur : ' + e.message;
