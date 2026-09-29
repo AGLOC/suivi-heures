@@ -143,6 +143,7 @@ newAuth.setPersistence(firebase.auth.Auth.Persistence.NONE);
 let oldData = null;       // { users: [{id, data}], ... }
 let adminEmail = '', adminPass = '';
 let uidMap = {};          // ancien uid -> nouveau uid
+let emailOverrides = {};  // ancien uid -> e-mail saisi à la main
 
 const $ = id => document.getElementById(id);
 function status(el, msg, kind) { $(el).className = 'status ' + (kind || ''); $(el).textContent = msg; }
@@ -197,11 +198,11 @@ $('b1').onclick = async () => {
   let rows = COLLECTIONS.map(c => `<tr><td>${LABELS[c]}</td><td class="num">${oldData[c].length}</td></tr>`).join('');
   $('tb1').innerHTML = `<table><thead><tr><th>Données</th><th>Nombre</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="table-wrap"><table><thead><tr><th>Salarié</th><th>E-mail</th><th>Actif</th></tr></thead><tbody>
-    ${oldData.users.map(u => `<tr><td>${esc(u.data.name)}</td><td>${esc(u.data.email) || '<span class="nomatch">manquant</span>'}</td><td>${u.data.active === false ? 'non' : 'oui'}</td></tr>`).join('')}
+    ${oldData.users.map(u => `<tr><td>${esc(u.data.name)}</td><td>${u.data.email ? esc(u.data.email) : `<input class="fix-email" data-uid="${esc(u.id)}" type="email" placeholder="E-mail de connexion" style="max-width:260px;padding:5px 8px">`}</td><td>${u.data.active === false ? 'non' : 'oui'}</td></tr>`).join('')}
     </tbody></table></div>`;
   let msg = `Lecture terminée : ${total} éléments trouvés.`;
   let kind = 'ok';
-  if (noEmail.length) { msg += `\n${noEmail.length} salarié(s) sans e-mail : leur compte ne pourra pas être recréé automatiquement.`; kind = 'warn'; }
+  if (noEmail.length) { msg += `\n${noEmail.length} salarié(s) sans e-mail enregistré : saisissez l'adresse qu'il ou elle utilise pour se connecter à la badgeuse dans le tableau ci-dessous avant de lancer la copie.`; kind = 'warn'; }
   if (total > SPARK_WRITE_LIMIT) { msg += `\nAttention : plus de ${SPARK_WRITE_LIMIT} éléments, la copie risque de dépasser le quota gratuit du jour. Prévenez-moi avant de continuer.`; kind = 'warn'; }
   status('st1', msg, kind);
   done(1); unlock(2);
@@ -250,8 +251,14 @@ $('b2').onclick = async () => {
   $('b2').disabled = true; $('pg').hidden = false; $('pg').value = 0;
   status('st2', 'Préparation…');
   try {
+    // E-mails saisis à la main pour les salariés sans e-mail
+    document.querySelectorAll('.fix-email').forEach(inp => {
+      const v = inp.value.trim().toLowerCase();
+      if (v) emailOverrides[inp.dataset.uid] = v;
+    });
     // Relecture de l'ancien projet pour inclure les derniers badgeages
     oldData = await readAll(oldDb);
+    oldData.users.forEach(u => { if (!u.data.email && emailOverrides[u.id]) u.data.email = emailOverrides[u.id]; });
     const newAdminUid = await signInNewAdmin();
 
     // Correspondances déjà enregistrées lors d'une copie précédente
