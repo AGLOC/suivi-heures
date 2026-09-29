@@ -4,107 +4,45 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Migration de la badgeuse</title>
+<title>Badgeuse : e-mails de mot de passe</title>
 <style>
-  :root {
-    --ink: #1d2a33;
-    --muted: #5d6b75;
-    --paper: #ffffff;
-    --ground: #eef2f1;
-    --line: #d5dedb;
-    --brand: #1f5f5b;
-    --ok: #237a3f;
-    --warn: #a15c00;
-    --bad: #b3261e;
-  }
+  :root { --ink:#1d2a33; --muted:#5d6b75; --line:#d5dedb; --brand:#1f5f5b; --ok:#237a3f; --warn:#a15c00; --bad:#b3261e; }
   * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--ground); color: var(--ink);
-    font: 16px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
-  }
-  main { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; }
-  h1 { font-size: 1.75rem; margin: 0 0 4px; }
-  .intro { color: var(--muted); margin: 0 0 28px; max-width: 62ch; }
-  section {
-    background: var(--paper); border: 1px solid var(--line);
-    border-left: 4px solid var(--line); border-radius: 6px;
-    padding: 20px 22px; margin-bottom: 16px;
-  }
-  section.active { border-left-color: var(--brand); }
-  section.done { border-left-color: var(--ok); }
-  section.locked { opacity: .55; }
-  h2 { font-size: 1.1rem; margin: 0 0 6px; display: flex; gap: 10px; align-items: baseline; }
-  h2 .n { color: var(--brand); font-weight: 700; }
-  p.help { color: var(--muted); margin: 0 0 14px; font-size: .95rem; }
-  label { display: block; font-size: .9rem; font-weight: 600; margin: 10px 0 4px; }
-  input {
-    width: 100%; max-width: 380px; padding: 9px 11px; font: inherit;
-    border: 1px solid var(--line); border-radius: 4px;
-  }
-  button {
-    margin-top: 14px; padding: 10px 18px; font: inherit; font-weight: 600;
-    background: var(--brand); color: #fff; border: 0; border-radius: 4px; cursor: pointer;
-  }
-  button.secondary { background: #fff; color: var(--brand); border: 1px solid var(--brand); }
-  button:disabled { background: #9fb3b1; cursor: not-allowed; }
-  button:focus-visible, input:focus-visible { outline: 3px solid #7fb8b3; outline-offset: 2px; }
-  .status { margin-top: 12px; font-size: .95rem; white-space: pre-line; }
-  .status.ok { color: var(--ok); } .status.warn { color: var(--warn); } .status.bad { color: var(--bad); }
-  .table-wrap { overflow-x: auto; margin-top: 12px; }
-  table { border-collapse: collapse; width: 100%; font-size: .95rem; }
-  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
-  th { color: var(--muted); font-weight: 600; }
-  td.num { font-variant-numeric: tabular-nums; }
-  .match { color: var(--ok); font-weight: 700; }
-  .nomatch { color: var(--bad); font-weight: 700; }
-  progress { width: 100%; height: 10px; margin-top: 12px; }
-  .danger { border-left-color: var(--warn); }
-  ul.log { margin: 10px 0 0; padding-left: 18px; font-size: .9rem; color: var(--muted); max-height: 180px; overflow-y: auto; }
+  body { margin:0; background:#eef2f1; color:var(--ink); font:16px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:32px 20px 64px; }
+  h1 { font-size:1.6rem; margin:0 0 6px; }
+  .intro { color:var(--muted); margin:0 0 24px; max-width:62ch; }
+  section { background:#fff; border:1px solid var(--line); border-left:4px solid var(--brand); border-radius:6px; padding:20px 22px; margin-bottom:16px; }
+  label { display:block; font-size:.9rem; font-weight:600; margin:10px 0 4px; }
+  input[type=email], input[type=password] { width:100%; max-width:380px; padding:9px 11px; font:inherit; border:1px solid var(--line); border-radius:4px; }
+  button { margin-top:14px; padding:10px 18px; font:inherit; font-weight:600; background:var(--brand); color:#fff; border:0; border-radius:4px; cursor:pointer; }
+  button:disabled { background:#9fb3b1; cursor:not-allowed; }
+  button:focus-visible, input:focus-visible { outline:3px solid #7fb8b3; outline-offset:2px; }
+  .status { margin-top:12px; font-size:.95rem; white-space:pre-line; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); }
+  .list label { font-weight:400; display:flex; gap:10px; align-items:center; margin:6px 0; }
+  .list small { color:var(--muted); }
 </style>
 </head>
 <body>
 <main>
-  <h1>Migration de la badgeuse</h1>
-  <p class="intro">Cette page copie les données de l'ancienne badgeuse vers le projet AGLOC.
-  Elle lit l'ancien projet sans rien y modifier : les salariés peuvent continuer à badger pendant la copie.</p>
+  <h1>E-mails de mot de passe</h1>
+  <p class="intro">La migration est terminée. Cette page envoie à chaque salarié coché un e-mail pour choisir
+  son mot de passe dans la badgeuse. Elle ne copie ni ne modifie aucune donnée.</p>
 
-  <section id="s1" class="active">
-    <h2><span class="n">1</span> Lire l'ancienne badgeuse</h2>
-    <p class="help">Connectez-vous avec le compte administrateur, comme dans la badgeuse.</p>
+  <section>
     <label for="email">E-mail administrateur</label>
     <input id="email" type="email" value="contact@ag-groupe.fr" autocomplete="username">
     <label for="pass">Mot de passe de la badgeuse</label>
     <input id="pass" type="password" autocomplete="current-password">
-    <br><button id="b1">Lire les données</button>
+    <br><button id="login">Afficher les salariés</button>
     <div id="st1" class="status"></div>
-    <div id="tb1" class="table-wrap"></div>
   </section>
 
-  <section id="s2" class="locked">
-    <h2><span class="n">2</span> Copier vers le projet AGLOC</h2>
-    <p class="help">Crée le compte administrateur et les comptes des salariés dans le nouveau projet,
-    puis copie les salariés, pointages, congés et badges. Vous pouvez relancer la copie autant de fois
-    que nécessaire : elle met simplement à jour le nouveau projet.</p>
-    <button id="b2" disabled>Copier les données</button>
-    <progress id="pg" value="0" max="100" hidden></progress>
+  <section id="s2" hidden>
+    <div id="list" class="list"></div>
+    <button id="send">Envoyer les e-mails</button>
     <div id="st2" class="status"></div>
-    <ul id="log" class="log"></ul>
-  </section>
-
-  <section id="s3" class="locked">
-    <h2><span class="n">3</span> Vérifier</h2>
-    <p class="help">Compare le nombre d'éléments dans l'ancien et le nouveau projet.</p>
-    <button id="b3" disabled>Comparer</button>
-    <div id="st3" class="status"></div>
-    <div id="tb3" class="table-wrap"></div>
-  </section>
-
-  <section id="s4" class="locked danger">
-    <h2><span class="n">4</span> Le jour du basculement uniquement</h2>
-    <p class="help">Envoie à chaque salarié un e-mail pour choisir son mot de passe dans la nouvelle badgeuse.
-    Ne cliquez pas avant que la badgeuse ait été basculée sur le nouveau projet.</p>
-    <button id="b4" class="secondary" disabled>Envoyer les e-mails de mot de passe</button>
-    <div id="st4" class="status"></div>
   </section>
 </main>
 
@@ -112,257 +50,64 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-// ---------- Configurations ----------
-const OLD_CFG = {
-  apiKey: "AIzaSyBejQIMds77GPMDs7VFCANH6q9CUjgWbZQ",
-  authDomain: "suivi-heures-agreno-def80.firebaseapp.com",
-  projectId: "suivi-heures-agreno-def80",
-  storageBucket: "suivi-heures-agreno-def80.firebasestorage.app",
-  messagingSenderId: "912622714840",
-  appId: "1:912622714840:web:4bf68140ea2d938715bcad"
-};
-const NEW_CFG = {
+const app = firebase.initializeApp({
   apiKey: "AIzaSyCpmetPQ8-S59r8nkbFRUCWLeSKMn0KCeM",
   authDomain: "agloc-edl.firebaseapp.com",
   projectId: "agloc-edl",
   storageBucket: "agloc-edl.firebasestorage.app",
   messagingSenderId: "905072085291",
   appId: "1:905072085291:web:35fdc7c1c356d6c5135d6e"
-};
-const COLLECTIONS = ['users', 'badges', 'pointages', 'conges'];
-const LABELS = { users: 'Salariés', badges: 'Badges (état en cours)', pointages: 'Pointages', conges: 'Congés et absences' };
-const SPARK_WRITE_LIMIT = 18000;
+}, 'mails');
+const auth = app.auth(), db = app.firestore();
+auth.setPersistence(firebase.auth.Auth.Persistence.NONE);
+auth.languageCode = 'fr';
 
-const oldApp = firebase.initializeApp(OLD_CFG, 'ancien');
-const newApp = firebase.initializeApp(NEW_CFG, 'nouveau');
-const oldAuth = oldApp.auth(), newAuth = newApp.auth();
-const oldDb = oldApp.firestore(), newDb = newApp.firestore();
-oldAuth.setPersistence(firebase.auth.Auth.Persistence.NONE);
-newAuth.setPersistence(firebase.auth.Auth.Persistence.NONE);
-
-let oldData = null;       // { users: [{id, data}], ... }
-let adminEmail = '', adminPass = '';
-let uidMap = {};          // ancien uid -> nouveau uid
-let emailOverrides = {};  // ancien uid -> e-mail saisi à la main
+// Personnes qui ont déjà leur mot de passe
+const ALREADY_SET = ['contact@ag-groupe.fr', 'clemence.girardeau@ag-groupe.fr'];
 
 const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
 function status(el, msg, kind) { $(el).className = 'status ' + (kind || ''); $(el).textContent = msg; }
-function log(msg) { const li = document.createElement('li'); li.textContent = msg; $('log').prepend(li); }
-function unlock(n) {
-  $('s' + n).classList.remove('locked'); $('s' + n).classList.add('active');
-  const b = $('b' + n); if (b) b.disabled = false;
-}
-function done(n) { $('s' + n).classList.remove('active'); $('s' + n).classList.add('done'); }
-function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
-function randomPassword() {
-  const a = new Uint8Array(18); crypto.getRandomValues(a);
-  return Array.from(a, b => b.toString(36)).join('') + 'Aa9!';
-}
 function authError(e) {
-  const c = e && e.code || '';
+  const c = (e && e.code) || '';
   if (c.includes('wrong-password') || c.includes('invalid-login') || c.includes('invalid-credential')) return 'E-mail ou mot de passe incorrect.';
   if (c.includes('too-many-requests')) return 'Trop de tentatives. Patientez quelques minutes puis réessayez.';
-  if (c.includes('network')) return 'Connexion internet indisponible.';
-  if (c.includes('operation-not-allowed')) return 'La connexion par e-mail n\'est pas activée dans le nouveau projet (Authentication → Méthode de connexion).';
   return (e && e.message) || String(e);
 }
 
-// ---------- Étape 1 : lecture de l'ancien projet ----------
-async function readAll(db) {
-  const out = {};
-  for (const c of COLLECTIONS) {
-    const snap = await db.collection(c).get();
-    out[c] = snap.docs.map(d => ({ id: d.id, data: d.data() }));
-  }
-  return out;
-}
-
-$('b1').onclick = async () => {
-  adminEmail = $('email').value.trim().toLowerCase();
-  adminPass = $('pass').value;
-  if (!adminEmail || !adminPass) return status('st1', 'Renseignez l\'e-mail et le mot de passe.', 'bad');
-  $('b1').disabled = true;
-  status('st1', 'Connexion à l\'ancienne badgeuse…');
+$('login').onclick = async () => {
+  $('login').disabled = true;
+  status('st1', 'Connexion…');
   try {
-    await oldAuth.signInWithEmailAndPassword(adminEmail, adminPass);
-  } catch (e) { $('b1').disabled = false; return status('st1', authError(e), 'bad'); }
-  status('st1', 'Lecture des données…');
-  try {
-    oldData = await readAll(oldDb);
-  } catch (e) {
-    $('b1').disabled = false;
-    return status('st1', 'Lecture impossible : ' + authError(e), 'bad');
-  }
-  const total = COLLECTIONS.reduce((n, c) => n + oldData[c].length, 0);
-  const noEmail = oldData.users.filter(u => !u.data.email);
-  let rows = COLLECTIONS.map(c => `<tr><td>${LABELS[c]}</td><td class="num">${oldData[c].length}</td></tr>`).join('');
-  $('tb1').innerHTML = `<table><thead><tr><th>Données</th><th>Nombre</th></tr></thead><tbody>${rows}</tbody></table>
-    <div class="table-wrap"><table><thead><tr><th>Salarié</th><th>E-mail</th><th>Actif</th></tr></thead><tbody>
-    ${oldData.users.map(u => `<tr><td>${esc(u.data.name)}</td><td>${u.data.email ? esc(u.data.email) : `<input class="fix-email" data-uid="${esc(u.id)}" type="email" placeholder="E-mail de connexion" style="max-width:260px;padding:5px 8px">`}</td><td>${u.data.active === false ? 'non' : 'oui'}</td></tr>`).join('')}
-    </tbody></table></div>`;
-  let msg = `Lecture terminée : ${total} éléments trouvés.`;
-  let kind = 'ok';
-  if (noEmail.length) { msg += `\n${noEmail.length} salarié(s) sans e-mail enregistré : saisissez l'adresse qu'il ou elle utilise pour se connecter à la badgeuse dans le tableau ci-dessous avant de lancer la copie.`; kind = 'warn'; }
-  if (total > SPARK_WRITE_LIMIT) { msg += `\nAttention : plus de ${SPARK_WRITE_LIMIT} éléments, la copie risque de dépasser le quota gratuit du jour. Prévenez-moi avant de continuer.`; kind = 'warn'; }
-  status('st1', msg, kind);
-  done(1); unlock(2);
-};
-
-// ---------- Étape 2 : copie ----------
-async function signInNewAdmin() {
-  try {
-    await newAuth.createUserWithEmailAndPassword(adminEmail, adminPass);
-    log('Compte administrateur créé dans le nouveau projet.');
-  } catch (e) {
-    if (e.code === 'auth/email-already-in-use') {
-      await newAuth.signInWithEmailAndPassword(adminEmail, adminPass);
-      log('Connecté au compte administrateur du nouveau projet.');
-    } else throw e;
-  }
-  return newAuth.currentUser.uid;
-}
-
-async function createEmployeeAccount(email, index) {
-  const tmp = firebase.initializeApp(NEW_CFG, 'tmp-' + Date.now() + '-' + index);
-  try {
-    const tAuth = tmp.auth();
-    await tAuth.setPersistence(firebase.auth.Auth.Persistence.NONE);
-    const cred = await tAuth.createUserWithEmailAndPassword(email, randomPassword());
-    return cred.user.uid;
-  } finally {
-    try { await tmp.delete(); } catch (_) {}
-  }
-}
-
-async function writeInBatches(ops, onProgress) {
-  const SIZE = 400;
-  for (let i = 0; i < ops.length; i += SIZE) {
-    const batch = newDb.batch();
-    ops.slice(i, i + SIZE).forEach(op => {
-      const ref = newDb.collection(op.c).doc(op.id);
-      op.del ? batch.delete(ref) : batch.set(ref, op.data);
-    });
-    await batch.commit();
-    onProgress(Math.min(i + SIZE, ops.length));
-  }
-}
-
-$('b2').onclick = async () => {
-  $('b2').disabled = true; $('pg').hidden = false; $('pg').value = 0;
-  status('st2', 'Préparation…');
-  try {
-    // E-mails saisis à la main pour les salariés sans e-mail
-    document.querySelectorAll('.fix-email').forEach(inp => {
-      const v = inp.value.trim().toLowerCase();
-      if (v) emailOverrides[inp.dataset.uid] = v;
-    });
-    // Relecture de l'ancien projet pour inclure les derniers badgeages
-    oldData = await readAll(oldDb);
-    oldData.users.forEach(u => { if (!u.data.email && emailOverrides[u.id]) u.data.email = emailOverrides[u.id]; });
-    const newAdminUid = await signInNewAdmin();
-
-    // Correspondances déjà enregistrées lors d'une copie précédente
-    const mapRef = newDb.collection('migration').doc('uidmap');
-    const mapSnap = await mapRef.get();
-    uidMap = mapSnap.exists ? (mapSnap.data().map || {}) : {};
-    uidMap[oldAuth.currentUser.uid] = newAdminUid;
-
-    // Comptes des salariés
-    const problems = [];
-    let i = 0;
-    for (const u of oldData.users) {
-      i++;
-      const email = (u.data.email || '').trim().toLowerCase();
-      if (uidMap[u.id]) continue;
-      if (!email) { problems.push(`${u.data.name || u.id} : pas d'e-mail`); continue; }
-      if (email === adminEmail) { uidMap[u.id] = newAdminUid; continue; }
-      status('st2', `Création des comptes : ${i} / ${oldData.users.length}`);
-      try {
-        uidMap[u.id] = await createEmployeeAccount(email, i);
-        log(`Compte créé : ${email}`);
-      } catch (e) {
-        problems.push(`${email} : ${e.code === 'auth/email-already-in-use' ? 'compte déjà existant mais non relié, prévenez-moi' : authError(e)}`);
-      }
-      await mapRef.set({ map: uidMap, updatedAt: new Date().toISOString() });
-    }
-    await mapRef.set({ map: uidMap, updatedAt: new Date().toISOString() });
-
-    // Préparation des écritures
-    const mapUid = id => uidMap[id] || id;
-    const ops = [];
-    const expected = {};
-    let unlinked = 0;
-    for (const c of COLLECTIONS) {
-      expected[c] = new Set();
-      for (const d of oldData[c]) {
-        const data = { ...d.data };
-        if (typeof data.userId === 'string') {
-          if (!uidMap[data.userId]) unlinked++;
-          data.userId = mapUid(data.userId);
-        }
-        const id = (c === 'users' || c === 'badges') ? mapUid(d.id) : d.id;
-        expected[c].add(id);
-        ops.push({ c, id, data });
-      }
-    }
-    // Suppression, dans le nouveau projet, de ce qui a disparu de l'ancien
-    for (const c of COLLECTIONS) {
-      const snap = await newDb.collection(c).get();
-      snap.docs.forEach(d => { if (!expected[c].has(d.id)) ops.push({ c, id: d.id, del: true }); });
-    }
-
-    $('pg').max = ops.length || 1;
-    status('st2', `Copie en cours : 0 / ${ops.length}`);
-    await writeInBatches(ops, n => { $('pg').value = n; status('st2', `Copie en cours : ${n} / ${ops.length}`); });
-
-    let msg = `Copie terminée : ${ops.length} opérations effectuées.`;
-    let kind = 'ok';
-    if (unlinked) { msg += `\n${unlinked} élément(s) liés à un salarié introuvable (ancien compte supprimé) : copiés tels quels.`; kind = 'warn'; }
-    if (problems.length) { msg += `\nÀ vérifier :\n- ` + problems.join('\n- '); kind = 'warn'; }
-    status('st2', msg, kind);
-    done(2); unlock(3);
-  } catch (e) {
-    status('st2', 'La copie s\'est arrêtée : ' + authError(e) +
-      (String(e.code || '').includes('permission') ? '\nVérifiez que les nouvelles règles Firestore ont bien été publiées.' : '') +
-      '\nVous pouvez relancer la copie sans risque.', 'bad');
-  }
-  $('b2').disabled = false;
-};
-
-// ---------- Étape 3 : vérification ----------
-$('b3').onclick = async () => {
-  $('b3').disabled = true;
-  status('st3', 'Comparaison en cours…');
-  try {
-    const oldNow = await readAll(oldDb);
-    const newNow = await readAll(newDb);
-    let allOk = true;
-    const rows = COLLECTIONS.map(c => {
-      const ok = oldNow[c].length === newNow[c].length;
-      if (!ok) allOk = false;
-      return `<tr><td>${LABELS[c]}</td><td class="num">${oldNow[c].length}</td><td class="num">${newNow[c].length}</td>
-        <td class="${ok ? 'match' : 'nomatch'}">${ok ? 'identique' : 'différent'}</td></tr>`;
+    await auth.signInWithEmailAndPassword($('email').value.trim(), $('pass').value);
+    const snap = await db.collection('users').get();
+    const people = snap.docs.map(d => d.data())
+      .filter(u => u.email)
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    $('list').innerHTML = people.map(u => {
+      const email = u.email.trim().toLowerCase();
+      const skip = ALREADY_SET.includes(email) || u.active === false;
+      return `<label><input type="checkbox" value="${esc(email)}" ${skip ? '' : 'checked'}>
+        <span>${esc(u.name)} <small>${esc(email)}${ALREADY_SET.includes(email) ? ' (a déjà son mot de passe)' : ''}${u.active === false ? ' (inactif)' : ''}</small></span></label>`;
     }).join('');
-    $('tb3').innerHTML = `<table><thead><tr><th>Données</th><th>Ancien</th><th>Nouveau</th><th>Résultat</th></tr></thead><tbody>${rows}</tbody></table>`;
-    if (allOk) { status('st3', 'Tout correspond. Vous pouvez m\'envoyer une capture de ce tableau.', 'ok'); done(3); unlock(4); }
-    else status('st3', 'Des écarts existent. Si un salarié a badgé entre-temps, relancez la copie (étape 2) puis comparez à nouveau.', 'warn');
-  } catch (e) { status('st3', 'Comparaison impossible : ' + authError(e), 'bad'); }
-  $('b3').disabled = false;
+    status('st1', `${people.length} salariés trouvés.`, 'ok');
+    $('s2').hidden = false;
+  } catch (e) {
+    status('st1', authError(e), 'bad');
+    $('login').disabled = false;
+  }
 };
 
-// ---------- Étape 4 : e-mails de mot de passe ----------
-$('b4').onclick = async () => {
-  const emails = (oldData ? oldData.users : [])
-    .map(u => (u.data.email || '').trim().toLowerCase())
-    .filter(e => e && e !== adminEmail);
-  if (!emails.length) return status('st4', 'Aucun salarié à prévenir.', 'warn');
-  if (!confirm(`Envoyer un e-mail de mot de passe à ${emails.length} salarié(s) ?\nÀ faire uniquement le jour du basculement.`)) return;
-  $('b4').disabled = true;
+$('send').onclick = async () => {
+  const emails = [...document.querySelectorAll('#list input:checked')].map(i => i.value);
+  if (!emails.length) return status('st2', 'Cochez au moins un salarié.', 'warn');
+  if (!confirm(`Envoyer un e-mail de mot de passe à ${emails.length} salarié(s) ?`)) return;
+  $('send').disabled = true;
   const failed = [];
   for (const e of emails) {
-    try { await newAuth.sendPasswordResetEmail(e); } catch (err) { failed.push(`${e} : ${authError(err)}`); }
+    try { await auth.sendPasswordResetEmail(e); } catch (err) { failed.push(`${e} : ${authError(err)}`); }
   }
-  status('st4', failed.length
+  status('st2', failed.length
     ? `E-mails envoyés, sauf pour :\n- ${failed.join('\n- ')}`
     : `E-mails envoyés à ${emails.length} salarié(s).`, failed.length ? 'warn' : 'ok');
 };
