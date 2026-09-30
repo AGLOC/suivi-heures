@@ -1,4 +1,4 @@
-const CACHE_NAME = 'suivi-heures-v4';
+const CACHE_NAME = 'suivi-heures-v6';
 const ASSETS = [
   '/suivi-heures/',
   '/suivi-heures/index.html'

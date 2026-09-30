@@ -443,6 +443,35 @@ input:focus, select:focus { outline: none; border-color: var(--ag-gold); backgro
   </div>
 
   <!-- Modal ajout pointage admin -->
+  <div class="modal-overlay" id="modal-export" style="display:none">
+    <div class="modal" style="max-height:90vh;overflow-y:auto;">
+      <h3>Exporter en CSV</h3>
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1">
+          <label style="font-size:13px;color:#666;display:block;margin-bottom:4px">Du</label>
+          <input type="date" id="exp-from" style="margin-bottom:10px;" />
+        </div>
+        <div style="flex:1">
+          <label style="font-size:13px;color:#666;display:block;margin-bottom:4px">Au</label>
+          <input type="date" id="exp-to" style="margin-bottom:10px;" />
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <label style="font-size:13px;color:#666;">Salariés</label>
+        <span style="font-size:12px;">
+          <a href="#" id="exp-all" style="color:var(--ag-navy);">Tout cocher</a> ·
+          <a href="#" id="exp-none" style="color:var(--ag-navy);">Tout décocher</a>
+        </span>
+      </div>
+      <div id="exp-users" style="border:1px solid #e5e5ea;border-radius:10px;padding:6px 10px;max-height:240px;overflow-y:auto;margin-bottom:8px;"></div>
+      <div class="error" id="exp-err"></div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeModal()">Annuler</button>
+        <button class="btn-primary" id="export-go">Exporter</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="modal-add-pointage" style="display:none">
     <div class="modal">
       <h3>Ajouter un pointage</h3>
@@ -596,6 +625,42 @@ let CU = null, UP = null, geo = null, timerInt = null, badgeTime = null, isBadge
 let unsubHist = null, unsubTeam = null, unsubAllPointages = null, unsubEmployees = null;
 let isAdmin = false;
 let allPointagesData = [];
+
+// =============================================
+// CHARGEMENT PROGRESSIF (limite les lectures Firebase)
+// =============================================
+let histMonthsBack = 0;   // 0 = mois en cours
+let adminMonthsBack = 0;
+let adminSince = null;
+function mondayOf(d) { const x = new Date(d); const wd = x.getDay() || 7; x.setDate(x.getDate() - wd + 1); x.setHours(0,0,0,0); return x; }
+function monthStartBack(n) { const now = new Date(); return new Date(now.getFullYear(), now.getMonth() - n, 1); }
+function isProfileTabActive() { const t = document.getElementById('tab-profile'); return !!(t && t.classList.contains('active')); }
+function loadMoreBar(kind, since) {
+  const label = since.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  return `<div style="text-align:center;padding:14px 8px 6px;">
+    <div style="font-size:12px;color:#888;margin-bottom:8px;">Pointages affichés depuis le ${label}</div>
+    <button type="button" onclick="loadOlder('${kind}')" style="background:var(--ag-navy);color:var(--ag-gold);border:none;padding:10px 16px;border-radius:10px;font-weight:600;cursor:pointer;">Charger le mois précédent</button>
+  </div>`;
+}
+function loadOlder(kind) {
+  if (kind === 'hist') { histMonthsBack++; listenHistory(); }
+  else { adminMonthsBack++; listenAllPointages(); }
+}
+
+// Pointages des semaines passées pour le calcul des soldes (qui exclut la semaine en cours) :
+// lus une fois, puis réutilisés au lieu d'être relus à chaque badgeage.
+let pastPointagesCache = null;
+const PAST_CACHE_TTL = 3 * 3600 * 1000;
+function getPastPointagesSnap(weekKey) {
+  const fresh = pastPointagesCache && pastPointagesCache.weekKey === weekKey && (Date.now() - pastPointagesCache.at) < PAST_CACHE_TTL;
+  if (!fresh) {
+    const p = db.collection('pointages').get();
+    pastPointagesCache = { weekKey, at: Date.now(), promise: p };
+    p.catch(() => { if (pastPointagesCache && pastPointagesCache.promise === p) pastPointagesCache = null; });
+  }
+  return pastPointagesCache.promise;
+}
+function invalidatePastPointages() { pastPointagesCache = null; }
 const geoAddrCache = {}; // cache coordonnées -> adresse
 let editDocId = null, deleteDocId = null;
 const DAYS = ['Lun','Mar','Mer','Jeu','Ven'];
@@ -624,6 +689,7 @@ function show(id) {
   document.getElementById(id).classList.add('active');
 }
 function closeModal() {
+  const mExp = document.getElementById('modal-export'); if (mExp) mExp.style.display = 'none';
   document.getElementById('modal-edit').style.display = 'none';
   document.getElementById('modal-delete').style.display = 'none';
   document.getElementById('modal-conge').style.display = 'none';
@@ -726,9 +792,10 @@ auth.onAuthStateChanged(async user => {
     await loadProfile();
     if (!isAdmin) {
       await checkBadge();
+      histMonthsBack = 0;
       listenHistory();
       renderWeek();
-      renderStats();
+      if (isProfileTabActive()) renderStats();
       addCongesTabToNav();
     } else {
       // Admin : masquer les onglets salarié inutiles
@@ -736,6 +803,7 @@ auth.onAuthStateChanged(async user => {
         const btn = document.querySelector('[data-tab="' + t + '"]');
         if (btn) btn.style.display = 'none';
       });
+      adminMonthsBack = 0;
       listenAllPointages();
       listenEmployees();
       updateAdminStats();
@@ -994,7 +1062,7 @@ document.getElementById('badge-btn').addEventListener('click', async () => {
       geoBtn.style.borderColor = '';
       geoBtn.style.color = '';
       updateBadgeUI(false);
-      renderWeek(); renderStats();
+      renderWeek(); if (isProfileTabActive()) renderStats();
     } catch(e) { alert('Erreur lors de la sauvegarde.'); }
   }
 });
@@ -1167,15 +1235,18 @@ function listenHistory() {
   if (unsubHist) unsubHist();
   const el = document.getElementById('hist-list');
   el.innerHTML = '<div class="loader">Chargement...</div>';
+  // Mois en cours (depuis le lundi de la semaine du 1er, pour des cumuls hebdo complets)
+  const histSince = mondayOf(monthStartBack(histMonthsBack));
   unsubHist = db.collection('pointages')
     .where('userId', '==', CU.uid)
+    .where('endTime', '>=', histSince.toISOString())
     .orderBy('endTime', 'desc')
     .onSnapshot(async snap => {
       if (snap.empty) {
-        el.innerHTML = '<div class="empty-state">Aucun pointage enregistré.<br><small>Pointez une arrivée puis un départ pour voir l\'historique.</small></div>';
+        el.innerHTML = '<div class="empty-state">Aucun pointage sur cette période.<br><small>Pointez une arrivée puis un départ pour voir l\'historique.</small></div>' + loadMoreBar('hist', histSince);
         return;
       }
-      const entries = snap.docs.map(d => d.data()).slice(0,60);
+      const entries = snap.docs.map(d => d.data());
 
       // Charger les congés CP/maladie/autre validés pour ajuster l'objectif hebdomadaire
       const cpDaysByWeek = {};
@@ -1192,7 +1263,7 @@ function listenHistory() {
       } catch(e) { console.error('Erreur chargement congés historique:', e); }
 
       // Précharger les adresses pour tous
-      preloadGeoAddresses(entries).then(() => buildHistoryHTML(entries, el, cpDaysByWeek));
+      preloadGeoAddresses(entries).then(() => { buildHistoryHTML(entries, el, cpDaysByWeek); el.insertAdjacentHTML('beforeend', loadMoreBar('hist', histSince)); });
     }, err => {
       el.innerHTML = '<div class="empty-state" style="color:#E24B4A">Erreur : ' + err.message + '</div>';
       console.error('Historique erreur:', err);
@@ -1431,7 +1502,7 @@ async function renderWeek() {
   try {
     const now = new Date(), day = now.getDay()||7;
     const mon = new Date(now); mon.setDate(now.getDate()-day+1); mon.setHours(0,0,0,0);
-    const snap = await db.collection('pointages').where('userId','==',CU.uid).get();
+    const snap = await db.collection('pointages').where('userId','==',CU.uid).where('endTime','>=',mon.toISOString()).get();
     const hrs = [0,0,0,0,0];
     snap.docs.forEach(d => { const e=d.data(); if(new Date(e.endTime)<mon) return; const i=(new Date(e.endTime).getDay()||7)-1; if(i>=0&&i<5) hrs[i]+=e.duration; });
     const mx = Math.max(...hrs,8);
@@ -1448,7 +1519,8 @@ async function renderStats() {
     const now = new Date(), day = now.getDay()||7;
     const mon = new Date(now); mon.setDate(now.getDate()-day+1); mon.setHours(0,0,0,0);
     const mStart = new Date(now.getFullYear(),now.getMonth(),1);
-    const snap = await db.collection('pointages').where('userId','==',CU.uid).get();
+    const statsSince = mStart < mon ? mStart : mon;
+    const snap = await db.collection('pointages').where('userId','==',CU.uid).where('endTime','>=',statsSince.toISOString()).get();
     const entries = snap.docs.map(d=>d.data()).filter(e=>new Date(e.endTime)>=mStart);
     const mH = entries.reduce((a,e)=>a+e.duration,0);
     const wH = entries.filter(e=>new Date(e.endTime)>=mon).reduce((a,e)=>a+e.duration,0);
@@ -1801,7 +1873,17 @@ async function renderWeeklyRecap() {
 function listenAllPointages() {
   if (unsubAllPointages) unsubAllPointages();
   try {
-    unsubAllPointages = db.collection('pointages').orderBy('endTime','desc').onSnapshot(snap => {
+    adminSince = mondayOf(monthStartBack(adminMonthsBack)); // semaine complète : depuis le lundi
+    const listEl = document.getElementById('all-pointages');
+    if (listEl) listEl.innerHTML = '<div class="loader">Chargement...</div>';
+    let firstSnap = true;
+    unsubAllPointages = db.collection('pointages').where('endTime','>=',adminSince.toISOString()).orderBy('endTime','desc').onSnapshot(snap => {
+      // Un pointage d'une semaine passée ajouté/modifié/supprimé : les soldes doivent être recalculés
+      if (!firstSnap) {
+        const curMon = mondayOf(new Date());
+        if (snap.docChanges().some(ch => new Date(ch.doc.data().endTime) < curMon)) invalidatePastPointages();
+      }
+      firstSnap = false;
       allPointagesData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       updateAdminStats();
       // Précharger les adresses puis afficher
@@ -1810,20 +1892,42 @@ function listenAllPointages() {
   } catch(e) { console.error(e); }
 }
 
+function getFilteredPointages() {
+  const search = (document.getElementById('f-search')?.value || '').toLowerCase();
+  const from = document.getElementById('f-date-from')?.value;
+  const to = document.getElementById('f-date-to')?.value;
+  let filtered = allPointagesData;
+  if (search) filtered = filtered.filter(e => (e.userName||'').toLowerCase().includes(search));
+  if (from) filtered = filtered.filter(e => e.date >= from);
+  if (to) filtered = filtered.filter(e => e.date <= to);
+  return filtered;
+}
+
 function renderAllPointages() {
   const el = document.getElementById('all-pointages');
   const search = (document.getElementById('f-search')?.value || '').toLowerCase();
   const from = document.getElementById('f-date-from')?.value;
   const to = document.getElementById('f-date-to')?.value;
 
+  // Filtre sur une date plus ancienne que les données chargées : charger jusqu'à ce mois-là
+  if (from && adminSince) {
+    const need = new Date(from + 'T00:00:00');
+    if (need < adminSince) {
+      const now = new Date();
+      adminMonthsBack = (now.getFullYear() - need.getFullYear()) * 12 + (now.getMonth() - need.getMonth());
+      listenAllPointages();
+      return;
+    }
+  }
+
   let filtered = allPointagesData;
   if (search) filtered = filtered.filter(e => (e.userName||'').toLowerCase().includes(search));
   if (from) filtered = filtered.filter(e => e.date >= from);
   if (to) filtered = filtered.filter(e => e.date <= to);
 
-  if (!filtered.length) { el.innerHTML = '<div class="empty-state">Aucun pointage trouvé</div>'; return; }
+  if (!filtered.length) { el.innerHTML = '<div class="empty-state">Aucun pointage trouvé</div>' + (adminSince ? loadMoreBar('admin', adminSince) : ''); return; }
 
-  el.innerHTML = filtered.slice(0,50).map(e => {
+  el.innerHTML = filtered.map(e => {
     const end = new Date(e.endTime);
     const dateStr = end.toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit',year:'2-digit'});
     const s = new Date(e.startTime).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
@@ -1850,6 +1954,7 @@ function renderAllPointages() {
       </div>
     </div>`;
   }).join('');
+  if (adminSince) el.insertAdjacentHTML('beforeend', loadMoreBar('admin', adminSince));
 }
 
 ['f-search','f-date-from','f-date-to'].forEach(id => {
@@ -1869,8 +1974,8 @@ async function updateAdminStats() {
     document.getElementById('a-present').textContent = present;
 
     const mStart = new Date(); mStart.setDate(1); mStart.setHours(0,0,0,0);
-    const pSnap = await db.collection('pointages').where('endTime','>=',mStart.toISOString()).get();
-    const totalH = pSnap.docs.reduce((a,d) => a + (d.data().duration||0), 0);
+    // Les pointages du mois sont déjà chargés par la liste : pas de nouvelle lecture
+    const totalH = allPointagesData.filter(e => new Date(e.endTime) >= mStart).reduce((a,e) => a + (e.duration||0), 0);
     document.getElementById('a-hours').textContent = formatDuration(totalH);
   } catch(e) { console.error(e); }
 }
@@ -1903,8 +2008,8 @@ async function computeAllSoldes() {
       userContratHistories[d.id] = d.data().contratHistory || [];
     });
 
-    // Récupérer tous les pointages
-    const snap = await db.collection('pointages').get();
+    // Pointages passés : lus une fois puis réutilisés (le solde exclut la semaine en cours)
+    const snap = await getPastPointagesSnap(thisWeekKey);
     const byUser = {};
     snap.docs.forEach(d => {
       const e = d.data();
@@ -2204,7 +2309,7 @@ document.getElementById('modal-save').addEventListener('click', async () => {
         duration: hours,
         startTime: lundi.toISOString(),
         endTime: vendredi.toISOString()
-      });
+      }); invalidatePastPointages();
       closeModal();
     } catch(e) { alert('Erreur : ' + e.message); }
   } else {
@@ -2219,7 +2324,7 @@ document.getElementById('modal-save').addEventListener('click', async () => {
       await db.collection('pointages').doc(editDocId).update({
         startTime: start.toISOString(), endTime: end.toISOString(),
         duration: dur, date: start.toISOString().split('T')[0]
-      });
+      }); invalidatePastPointages();
       closeModal();
     } catch(e) { alert('Erreur : ' + e.message); }
   }
@@ -2232,7 +2337,7 @@ window.openDelete = (docId) => {
 
 document.getElementById('modal-confirm-delete').addEventListener('click', async () => {
   try {
-    await db.collection('pointages').doc(deleteDocId).delete();
+    await db.collection('pointages').doc(deleteDocId).delete(); invalidatePastPointages();
     closeModal();
   } catch(e) { alert('Erreur : ' + e.message); }
 });
@@ -2321,8 +2426,73 @@ function getMondayKey(dateStr) {
   return mon.getFullYear()+'-'+String(mon.getMonth()+1).padStart(2,'0')+'-'+String(mon.getDate()).padStart(2,'0');
 }
 
+// =============================================
+// EXPORT CSV : choix des dates et des salariés
+// =============================================
+let exportOpts = null; // { from, to, uids: Set | null (null = tous) }
+function isoDay(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+
 document.getElementById('export-csv').addEventListener('click', async () => {
-  if (!allPointagesData.length) { alert('Aucune donnée à exporter.'); return; }
+  // Dates proposées : celles des filtres, sinon la période affichée
+  const fFrom = document.getElementById('f-date-from')?.value;
+  const fTo = document.getElementById('f-date-to')?.value;
+  document.getElementById('exp-from').value = fFrom || (adminSince ? isoDay(adminSince) : isoDay(new Date()));
+  document.getElementById('exp-to').value = fTo || isoDay(new Date());
+  document.getElementById('exp-err').textContent = '';
+  const box = document.getElementById('exp-users');
+  box.innerHTML = '<div class="loader">Chargement...</div>';
+  document.getElementById('modal-export').style.display = 'flex';
+  try {
+    const usersSnap = await db.collection('users').get();
+    const users = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+    box.innerHTML = users.map(u => `<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:14px;cursor:pointer;">
+        <input type="checkbox" class="exp-user" value="${u.id}" checked style="width:auto;margin:0;">
+        <span>${u.name || u.email || 'Sans nom'}${u.active === false ? ' <small style="color:#aaa">(inactif)</small>' : ''}</span>
+      </label>`).join('') || '<div class="empty-state">Aucun salarié</div>';
+  } catch(e) { box.innerHTML = '<div class="error">Erreur : ' + e.message + '</div>'; }
+});
+document.getElementById('exp-all').addEventListener('click', e => { e.preventDefault(); document.querySelectorAll('.exp-user').forEach(c => c.checked = true); });
+document.getElementById('exp-none').addEventListener('click', e => { e.preventDefault(); document.querySelectorAll('.exp-user').forEach(c => c.checked = false); });
+
+document.getElementById('export-go').addEventListener('click', async () => {
+  const errEl = document.getElementById('exp-err');
+  const from = document.getElementById('exp-from').value;
+  const to = document.getElementById('exp-to').value;
+  const boxes = [...document.querySelectorAll('.exp-user')];
+  const checked = boxes.filter(c => c.checked).map(c => c.value);
+  if (!from || !to) { errEl.textContent = 'Choisissez les deux dates.'; return; }
+  if (from > to) { errEl.textContent = 'La date de début doit précéder la date de fin.'; return; }
+  if (!checked.length) { errEl.textContent = 'Cochez au moins un salarié.'; return; }
+  const uids = checked.length === boxes.length ? null : new Set(checked);
+  const goBtn = document.getElementById('export-go');
+  goBtn.disabled = true; goBtn.textContent = 'Chargement...';
+  try {
+    const fromD = new Date(from + 'T00:00:00'), toD = new Date(to + 'T23:59:59.999');
+    let data;
+    if (adminSince && fromD >= adminSince) {
+      // Période déjà chargée à l'écran : aucune nouvelle lecture
+      data = allPointagesData.filter(e => { const t = new Date(e.endTime); return t >= fromD && t <= toD; });
+    } else {
+      const snap = await db.collection('pointages')
+        .where('endTime', '>=', fromD.toISOString())
+        .where('endTime', '<=', toD.toISOString())
+        .orderBy('endTime', 'desc').get();
+      data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+    if (uids) data = data.filter(e => uids.has(e.userId));
+    if (!data.length) { errEl.textContent = 'Aucun pointage pour cette sélection.'; return; }
+    exportOpts = { from, to, uids };
+    closeModal();
+    await runCsvExport(data);
+  } catch(e) {
+    errEl.textContent = 'Erreur : ' + e.message;
+  } finally {
+    goBtn.disabled = false; goBtn.textContent = 'Exporter';
+  }
+});
+
+async function runCsvExport(exportData) {
 
   const btn = document.getElementById('export-csv');
   btn.textContent = '⏳ Génération en cours...';
@@ -2332,21 +2502,18 @@ document.getElementById('export-csv').addEventListener('click', async () => {
     // Géocodage de toutes les positions uniques
     const geoCache = {};
     const allGeoKeys = new Set();
-    allPointagesData.forEach(e => {
+    exportData.forEach(e => {
       if (e.geoStart) allGeoKeys.add(e.geoStart.lat + ',' + e.geoStart.lng);
       if (e.geoEnd) allGeoKeys.add(e.geoEnd.lat + ',' + e.geoEnd.lng);
       if (e.geo && !e.geoStart) allGeoKeys.add(e.geo.lat + ',' + e.geo.lng);
     });
-    const uniqueGeos = [...allGeoKeys];
-    for (const key of uniqueGeos) {
-      const [lat, lng] = key.split(',');
-      geoCache[key] = await reverseGeocode(lat, lng);
-      await new Promise(r => setTimeout(r, 200)); // respecter les limites OSM
-    }
+    // Adresses : réutilise celles déjà calculées pour l'affichage, ne cherche que les manquantes
+    await preloadGeoAddresses(exportData);
+    allGeoKeys.forEach(key => { geoCache[key] = geoAddrCache[key] || ''; });
 
     // Grouper par salarié puis par semaine
     const byEmployee = {};
-    allPointagesData.forEach(e => {
+    exportData.forEach(e => {
       const name = e.userName || 'Inconnu';
       if (!byEmployee[name]) byEmployee[name] = {};
       const weekKey = getMondayKey(e.date);
@@ -2428,14 +2595,17 @@ document.getElementById('export-csv').addEventListener('click', async () => {
       rows.push(['=== ABSENCES ET CONGES VALIDES ===', '', '', '', '', '', '', '']);
       rows.push(['Salarie', 'Type absence', 'Date', 'Debut periode', 'Fin periode', 'Jours ouvres', '', 'Commentaire']);
       const typeLabel = { cp: 'Conges payes', rtt: 'Recup', maladie: 'Maladie', autre: 'Autre' };
-      congesSnap.docs.sort((a,b) => a.data().userName.localeCompare(b.data().userName)).forEach(d => {
+      congesSnap.docs
+        .filter(d => !exportOpts || !exportOpts.uids || exportOpts.uids.has(d.data().userId))
+        .sort((a,b) => (a.data().userName||'').localeCompare(b.data().userName||'')).forEach(d => {
         const c = d.data();
         const startFr = new Date(c.start).toLocaleDateString('fr-FR');
         const endFr = new Date(c.end).toLocaleDateString('fr-FR');
         const cur = new Date(c.start);
         const endD = new Date(c.end);
         while (cur <= endD) {
-          if (cur.getDay() !== 0 && cur.getDay() !== 6) {
+          const inRange = !exportOpts || (isoDay(cur) >= exportOpts.from && isoDay(cur) <= exportOpts.to);
+          if (inRange && cur.getDay() !== 0 && cur.getDay() !== 6) {
             rows.push([c.userName, typeLabel[c.type] || c.type, cur.toLocaleDateString('fr-FR'), startFr, endFr, '1', '', c.comment || '']);
           }
           cur.setDate(cur.getDate() + 1);
@@ -2448,7 +2618,7 @@ document.getElementById('export-csv').addEventListener('click', async () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'suivi_heures_' + new Date().toISOString().split('T')[0] + '.csv';
+    a.download = exportOpts ? ('suivi_heures_' + exportOpts.from + '_au_' + exportOpts.to + '.csv') : ('suivi_heures_' + new Date().toISOString().split('T')[0] + '.csv');
     a.click();
     URL.revokeObjectURL(url);
 
@@ -2456,10 +2626,10 @@ document.getElementById('export-csv').addEventListener('click', async () => {
     alert('Erreur lors de la génération : ' + e.message);
     console.error(e);
   } finally {
-    btn.textContent = '⬇ Exporter CSV';
+    btn.textContent = '⬇ CSV';
     btn.disabled = false;
   }
-});
+}
 
 
 // =============================================
@@ -2759,6 +2929,7 @@ document.getElementById('add-pointage-save').addEventListener('click', async () 
       addedByAdmin: true
     });
     closeModal();
+    invalidatePastPointages();
     allPointagesData = []; // Force refresh
   } catch(e) { errEl.textContent = 'Erreur : ' + e.message; }
 });
