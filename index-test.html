@@ -1844,7 +1844,7 @@ async function renderWeeklyRecap() {
 function listenAllPointages() {
   if (unsubAllPointages) unsubAllPointages();
   try {
-    adminSince = monthStartBack(adminMonthsBack);
+    adminSince = mondayOf(monthStartBack(adminMonthsBack)); // semaine complète : depuis le lundi
     const listEl = document.getElementById('all-pointages');
     if (listEl) listEl.innerHTML = '<div class="loader">Chargement...</div>';
     let firstSnap = true;
@@ -1861,6 +1861,17 @@ function listenAllPointages() {
       preloadGeoAddresses(allPointagesData).then(() => renderAllPointages());
     });
   } catch(e) { console.error(e); }
+}
+
+function getFilteredPointages() {
+  const search = (document.getElementById('f-search')?.value || '').toLowerCase();
+  const from = document.getElementById('f-date-from')?.value;
+  const to = document.getElementById('f-date-to')?.value;
+  let filtered = allPointagesData;
+  if (search) filtered = filtered.filter(e => (e.userName||'').toLowerCase().includes(search));
+  if (from) filtered = filtered.filter(e => e.date >= from);
+  if (to) filtered = filtered.filter(e => e.date <= to);
+  return filtered;
 }
 
 function renderAllPointages() {
@@ -2387,13 +2398,9 @@ function getMondayKey(dateStr) {
 }
 
 document.getElementById('export-csv').addEventListener('click', async () => {
-  // L'export porte sur tout l'historique : lecture complète uniquement au moment de l'export
-  let exportData = [];
-  try {
-    const fullSnap = await db.collection('pointages').orderBy('endTime','desc').get();
-    exportData = fullSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  } catch(e) { alert('Erreur de chargement : ' + e.message); return; }
-  if (!exportData.length) { alert('Aucune donnée à exporter.'); return; }
+  // Export de la période affichée (mois chargés + filtres), sans nouvelle lecture Firebase
+  const exportData = getFilteredPointages();
+  if (!exportData.length) { alert('Aucune donnée à exporter pour la période affichée.'); return; }
 
   const btn = document.getElementById('export-csv');
   btn.textContent = '⏳ Génération en cours...';
@@ -2408,12 +2415,9 @@ document.getElementById('export-csv').addEventListener('click', async () => {
       if (e.geoEnd) allGeoKeys.add(e.geoEnd.lat + ',' + e.geoEnd.lng);
       if (e.geo && !e.geoStart) allGeoKeys.add(e.geo.lat + ',' + e.geo.lng);
     });
-    const uniqueGeos = [...allGeoKeys];
-    for (const key of uniqueGeos) {
-      const [lat, lng] = key.split(',');
-      geoCache[key] = await reverseGeocode(lat, lng);
-      await new Promise(r => setTimeout(r, 200)); // respecter les limites OSM
-    }
+    // Adresses : réutilise celles déjà calculées pour l'affichage, ne cherche que les manquantes
+    await preloadGeoAddresses(exportData);
+    allGeoKeys.forEach(key => { geoCache[key] = geoAddrCache[key] || ''; });
 
     // Grouper par salarié puis par semaine
     const byEmployee = {};
