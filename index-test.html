@@ -444,6 +444,35 @@ input:focus, select:focus { outline: none; border-color: var(--ag-gold); backgro
   </div>
 
   <!-- Modal ajout pointage admin -->
+  <div class="modal-overlay" id="modal-export" style="display:none">
+    <div class="modal" style="max-height:90vh;overflow-y:auto;">
+      <h3>Exporter en CSV</h3>
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1">
+          <label style="font-size:13px;color:#666;display:block;margin-bottom:4px">Du</label>
+          <input type="date" id="exp-from" style="margin-bottom:10px;" />
+        </div>
+        <div style="flex:1">
+          <label style="font-size:13px;color:#666;display:block;margin-bottom:4px">Au</label>
+          <input type="date" id="exp-to" style="margin-bottom:10px;" />
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <label style="font-size:13px;color:#666;">Salariés</label>
+        <span style="font-size:12px;">
+          <a href="#" id="exp-all" style="color:var(--ag-navy);">Tout cocher</a> ·
+          <a href="#" id="exp-none" style="color:var(--ag-navy);">Tout décocher</a>
+        </span>
+      </div>
+      <div id="exp-users" style="border:1px solid #e5e5ea;border-radius:10px;padding:6px 10px;max-height:240px;overflow-y:auto;margin-bottom:8px;"></div>
+      <div class="error" id="exp-err"></div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeModal()">Annuler</button>
+        <button class="btn-primary" id="export-go">Exporter</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="modal-add-pointage" style="display:none">
     <div class="modal">
       <h3>Ajouter un pointage</h3>
@@ -661,6 +690,7 @@ function show(id) {
   document.getElementById(id).classList.add('active');
 }
 function closeModal() {
+  const mExp = document.getElementById('modal-export'); if (mExp) mExp.style.display = 'none';
   document.getElementById('modal-edit').style.display = 'none';
   document.getElementById('modal-delete').style.display = 'none';
   document.getElementById('modal-conge').style.display = 'none';
@@ -2397,10 +2427,73 @@ function getMondayKey(dateStr) {
   return mon.getFullYear()+'-'+String(mon.getMonth()+1).padStart(2,'0')+'-'+String(mon.getDate()).padStart(2,'0');
 }
 
+// =============================================
+// EXPORT CSV : choix des dates et des salariés
+// =============================================
+let exportOpts = null; // { from, to, uids: Set | null (null = tous) }
+function isoDay(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+
 document.getElementById('export-csv').addEventListener('click', async () => {
-  // Export de la période affichée (mois chargés + filtres), sans nouvelle lecture Firebase
-  const exportData = getFilteredPointages();
-  if (!exportData.length) { alert('Aucune donnée à exporter pour la période affichée.'); return; }
+  // Dates proposées : celles des filtres, sinon la période affichée
+  const fFrom = document.getElementById('f-date-from')?.value;
+  const fTo = document.getElementById('f-date-to')?.value;
+  document.getElementById('exp-from').value = fFrom || (adminSince ? isoDay(adminSince) : isoDay(new Date()));
+  document.getElementById('exp-to').value = fTo || isoDay(new Date());
+  document.getElementById('exp-err').textContent = '';
+  const box = document.getElementById('exp-users');
+  box.innerHTML = '<div class="loader">Chargement...</div>';
+  document.getElementById('modal-export').style.display = 'flex';
+  try {
+    const usersSnap = await db.collection('users').get();
+    const users = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+    box.innerHTML = users.map(u => `<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:14px;cursor:pointer;">
+        <input type="checkbox" class="exp-user" value="${u.id}" checked style="width:auto;margin:0;">
+        <span>${u.name || u.email || 'Sans nom'}${u.active === false ? ' <small style="color:#aaa">(inactif)</small>' : ''}</span>
+      </label>`).join('') || '<div class="empty-state">Aucun salarié</div>';
+  } catch(e) { box.innerHTML = '<div class="error">Erreur : ' + e.message + '</div>'; }
+});
+document.getElementById('exp-all').addEventListener('click', e => { e.preventDefault(); document.querySelectorAll('.exp-user').forEach(c => c.checked = true); });
+document.getElementById('exp-none').addEventListener('click', e => { e.preventDefault(); document.querySelectorAll('.exp-user').forEach(c => c.checked = false); });
+
+document.getElementById('export-go').addEventListener('click', async () => {
+  const errEl = document.getElementById('exp-err');
+  const from = document.getElementById('exp-from').value;
+  const to = document.getElementById('exp-to').value;
+  const boxes = [...document.querySelectorAll('.exp-user')];
+  const checked = boxes.filter(c => c.checked).map(c => c.value);
+  if (!from || !to) { errEl.textContent = 'Choisissez les deux dates.'; return; }
+  if (from > to) { errEl.textContent = 'La date de début doit précéder la date de fin.'; return; }
+  if (!checked.length) { errEl.textContent = 'Cochez au moins un salarié.'; return; }
+  const uids = checked.length === boxes.length ? null : new Set(checked);
+  const goBtn = document.getElementById('export-go');
+  goBtn.disabled = true; goBtn.textContent = 'Chargement...';
+  try {
+    const fromD = new Date(from + 'T00:00:00'), toD = new Date(to + 'T23:59:59.999');
+    let data;
+    if (adminSince && fromD >= adminSince) {
+      // Période déjà chargée à l'écran : aucune nouvelle lecture
+      data = allPointagesData.filter(e => { const t = new Date(e.endTime); return t >= fromD && t <= toD; });
+    } else {
+      const snap = await db.collection('pointages')
+        .where('endTime', '>=', fromD.toISOString())
+        .where('endTime', '<=', toD.toISOString())
+        .orderBy('endTime', 'desc').get();
+      data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+    if (uids) data = data.filter(e => uids.has(e.userId));
+    if (!data.length) { errEl.textContent = 'Aucun pointage pour cette sélection.'; return; }
+    exportOpts = { from, to, uids };
+    closeModal();
+    await runCsvExport(data);
+  } catch(e) {
+    errEl.textContent = 'Erreur : ' + e.message;
+  } finally {
+    goBtn.disabled = false; goBtn.textContent = 'Exporter';
+  }
+});
+
+async function runCsvExport(exportData) {
 
   const btn = document.getElementById('export-csv');
   btn.textContent = '⏳ Génération en cours...';
@@ -2503,14 +2596,17 @@ document.getElementById('export-csv').addEventListener('click', async () => {
       rows.push(['=== ABSENCES ET CONGES VALIDES ===', '', '', '', '', '', '', '']);
       rows.push(['Salarie', 'Type absence', 'Date', 'Debut periode', 'Fin periode', 'Jours ouvres', '', 'Commentaire']);
       const typeLabel = { cp: 'Conges payes', rtt: 'Recup', maladie: 'Maladie', autre: 'Autre' };
-      congesSnap.docs.sort((a,b) => a.data().userName.localeCompare(b.data().userName)).forEach(d => {
+      congesSnap.docs
+        .filter(d => !exportOpts || !exportOpts.uids || exportOpts.uids.has(d.data().userId))
+        .sort((a,b) => (a.data().userName||'').localeCompare(b.data().userName||'')).forEach(d => {
         const c = d.data();
         const startFr = new Date(c.start).toLocaleDateString('fr-FR');
         const endFr = new Date(c.end).toLocaleDateString('fr-FR');
         const cur = new Date(c.start);
         const endD = new Date(c.end);
         while (cur <= endD) {
-          if (cur.getDay() !== 0 && cur.getDay() !== 6) {
+          const inRange = !exportOpts || (isoDay(cur) >= exportOpts.from && isoDay(cur) <= exportOpts.to);
+          if (inRange && cur.getDay() !== 0 && cur.getDay() !== 6) {
             rows.push([c.userName, typeLabel[c.type] || c.type, cur.toLocaleDateString('fr-FR'), startFr, endFr, '1', '', c.comment || '']);
           }
           cur.setDate(cur.getDate() + 1);
@@ -2523,7 +2619,7 @@ document.getElementById('export-csv').addEventListener('click', async () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'suivi_heures_' + new Date().toISOString().split('T')[0] + '.csv';
+    a.download = exportOpts ? ('suivi_heures_' + exportOpts.from + '_au_' + exportOpts.to + '.csv') : ('suivi_heures_' + new Date().toISOString().split('T')[0] + '.csv');
     a.click();
     URL.revokeObjectURL(url);
 
@@ -2531,10 +2627,10 @@ document.getElementById('export-csv').addEventListener('click', async () => {
     alert('Erreur lors de la génération : ' + e.message);
     console.error(e);
   } finally {
-    btn.textContent = '⬇ Exporter CSV';
+    btn.textContent = '⬇ CSV';
     btn.disabled = false;
   }
-});
+}
 
 
 // =============================================
